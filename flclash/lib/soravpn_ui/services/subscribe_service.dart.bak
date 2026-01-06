@@ -1,0 +1,420 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'auth_service.dart';
+
+/// Subscription and node service for SoraVPN
+/// Handles fetching subscription info and node list
+class SubscribeService {
+  static const String _baseUrl = 'https://apiserver.taptaro.com';
+  static const String _subscribePath = '/api/subscribe'; // Subscribe path from site config
+
+  /// Get Sing-box subscription config directly using subscription token
+  /// This returns a properly formatted Sing-box JSON config
+  static Future<Map<String, dynamic>?> getSingBoxConfig(String subscriptionToken) async {
+    try {
+      // Fetch Sing-box format subscription
+      final url = '$_baseUrl$_subscribePath?token=$subscriptionToken&type=singbox';
+      print('[SubscribeService] Fetching Sing-box config from: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'SoraVPN/1.0 (sing-box)',
+        },
+      );
+
+      print('[SubscribeService] Sing-box config response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          // API may return comment line before JSON, strip it
+          String body = response.body;
+          if (body.startsWith('//')) {
+            final newlineIndex = body.indexOf('\n');
+            if (newlineIndex != -1) {
+              body = body.substring(newlineIndex + 1);
+            }
+          }
+          final config = jsonDecode(body);
+          print('[SubscribeService] Got Sing-box config with ${(config['outbounds'] as List?)?.length ?? 0} outbounds');
+          return config;
+        } catch (e) {
+          print('[SubscribeService] Failed to parse Sing-box config: $e');
+          print('[SubscribeService] Response body: ${response.body.substring(0, 200)}...');
+          return null;
+        }
+      } else {
+        print('[SubscribeService] Failed to get Sing-box config: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('[SubscribeService] Error fetching Sing-box config: $e');
+      return null;
+    }
+  }
+
+  /// Get the first subscription token from node list response
+  static Future<String?> getFirstSubscriptionToken() async {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      return null;
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/v1/public/subscribe/node/list'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token,
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      if (data['code'] == 200 && data['data'] != null && data['data']['list'] != null) {
+        final List<dynamic> subscriptions = data['data']['list'];
+        if (subscriptions.isNotEmpty) {
+          final subToken = subscriptions[0]['token'];
+          print('[SubscribeService] Got subscription token: $subToken');
+          return subToken;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('[SubscribeService] Error getting subscription token: $e');
+      return null;
+    }
+  }
+
+  /// Get user's subscription node list
+  static Future<List<VpnNode>> getNodeList() async {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      throw Exception('Not logged in');
+    }
+
+    print('[SubscribeService] Using token: ${token.substring(0, 20)}...');
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/v1/public/subscribe/node/list'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token,
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      print('[SubscribeService] Node list response: $data');
+
+      // Check for token expiration or other errors
+      if (data['code'] != null && data['code'] != 0 && data['code'] != 200) {
+        print('[SubscribeService] API error code: ${data['code']}, message: ${data['msg']}');
+        if (data['code'] == 40004) {
+          throw Exception('TOKEN_EXPIRED');
+        }
+        throw Exception(data['msg'] ?? 'Failed to get node list');
+      }
+
+      if (response.statusCode == 200 && data['data'] != null) {
+        // API returns data.list[].nodes structure
+        final dataContent = data['data'];
+        List<VpnNode> allNodes = [];
+
+        if (dataContent is List) {
+          // Direct list of nodes
+          allNodes = dataContent.map((node) => VpnNode.fromJson(node)).toList();
+        } else if (dataContent is Map && dataContent['list'] != null) {
+          // Nested structure: data.list[].nodes
+          final List<dynamic> subscriptions = dataContent['list'];
+          for (var sub in subscriptions) {
+            if (sub['nodes'] != null) {
+              final List<dynamic> nodes = sub['nodes'];
+              allNodes.addAll(nodes.map((node) => VpnNode.fromJson(node)));
+            }
+          }
+        }
+
+        print('[SubscribeService] Got ${allNodes.length} nodes');
+        return allNodes;
+      } else {
+        print('[SubscribeService] No node data in response');
+        return [];
+      }
+    } catch (e) {
+      throw Exception('Get node list error: $e');
+    }
+  }
+
+  /// Get user's active subscriptions (user_subscribe records)
+  /// This extracts user subscription data from the node list API response
+  static Future<List<Subscription>> getSubscriptionList() async {
+    final token = await AuthService.getToken();
+    if (token == null) {
+      throw Exception('Not logged in');
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/v1/public/subscribe/node/list'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token,
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      print('[SubscribeService] User subscription response: $data');
+
+      // Check for token expiration or other errors
+      if (data['code'] != null && data['code'] != 0 && data['code'] != 200) {
+        print('[SubscribeService] API error code: ${data['code']}, message: ${data['msg']}');
+        if (data['code'] == 40004) {
+          throw Exception('TOKEN_EXPIRED');
+        }
+        throw Exception(data['msg'] ?? 'Failed to get user subscriptions');
+      }
+
+      if (response.statusCode == 200 && data['data'] != null) {
+        final dataContent = data['data'];
+
+        if (dataContent is Map && dataContent['list'] != null) {
+          final List<dynamic> userSubscriptions = dataContent['list'];
+          print('[SubscribeService] Got ${userSubscriptions.length} user subscriptions');
+          return userSubscriptions.map((sub) => Subscription.fromJson(sub)).toList();
+        }
+      }
+
+      print('[SubscribeService] No user subscription data in response');
+      return [];
+    } catch (e) {
+      throw Exception('Get user subscription error: $e');
+    }
+  }
+}
+
+/// VPN Node model
+class VpnNode {
+  final int id;
+  final String name;
+  final String uuid;
+  final String protocol;
+  final String serverAddr;
+  final int serverPort;
+  final String config;
+  final String country;
+  final List<String> tags;
+  final int speedLimit;
+  final double trafficRatio;
+  // Additional fields for different protocols
+  final String? method; // For Shadowsocks
+  final String? password; // For Shadowsocks/Trojan
+  final String? flow; // For VLESS
+  final int? alterId; // For VMess
+  final String? security; // For VMess
+  final Map<String, dynamic>? tls; // TLS settings
+  final Map<String, dynamic>? rawJson; // Store raw JSON for debugging
+
+  VpnNode({
+    required this.id,
+    required this.name,
+    required this.uuid,
+    required this.protocol,
+    required this.serverAddr,
+    required this.serverPort,
+    required this.config,
+    required this.country,
+    required this.tags,
+    required this.speedLimit,
+    required this.trafficRatio,
+    this.method,
+    this.password,
+    this.flow,
+    this.alterId,
+    this.security,
+    this.tls,
+    this.rawJson,
+  });
+
+  factory VpnNode.fromJson(Map<String, dynamic> json) {
+    print('[VpnNode] Parsing node JSON: $json');
+    return VpnNode(
+      id: json['id'] ?? 0,
+      name: json['name'] ?? '',
+      uuid: json['uuid'] ?? '',
+      protocol: json['protocol'] ?? '',
+      // API uses 'address' instead of 'server_addr'
+      serverAddr: json['address'] ?? json['server_addr'] ?? json['server'] ?? json['host'] ?? '',
+      // API uses 'port' instead of 'server_port'
+      serverPort: json['port'] ?? json['server_port'] ?? 443,
+      config: json['config'] ?? '',
+      country: json['country'] ?? '',
+      tags: json['tags'] != null ? List<String>.from(json['tags']) : [],
+      speedLimit: json['speed_limit'] ?? 0,
+      trafficRatio: (json['traffic_ratio'] ?? 1.0).toDouble(),
+      method: json['method'] ?? json['cipher'],
+      password: json['password'],
+      flow: json['flow'],
+      alterId: json['alter_id'] ?? json['aid'],
+      security: json['security'],
+      tls: json['tls'] is Map ? Map<String, dynamic>.from(json['tls']) : null,
+      rawJson: json, // Store for debugging
+    );
+  }
+}
+
+/// Subscription model (user_subscribe record)
+class Subscription {
+  final int id;
+  final int userId;
+  final int subscribeId;
+  final int upload;
+  final int download;
+  final int traffic;
+  final int startTime; // Unix timestamp
+  final int expireTime; // Unix timestamp
+  final int resetTime; // Can be timestamp or day of month (0-31)
+  final String token;
+
+  Subscription({
+    required this.id,
+    required this.userId,
+    required this.subscribeId,
+    required this.upload,
+    required this.download,
+    required this.traffic,
+    required this.startTime,
+    required this.expireTime,
+    required this.resetTime,
+    required this.token,
+  });
+
+  factory Subscription.fromJson(Map<String, dynamic> json) {
+    print('[Subscription] Parsing user subscription JSON: $json');
+    print('[Subscription] reset_time value: ${json['reset_time']}');
+    print('[Subscription] reset_cycle value: ${json['reset_cycle']}');
+    print('[Subscription] subscribe value: ${json['subscribe']}');
+    return Subscription(
+      id: json['id'] ?? 0,
+      userId: json['user_id'] ?? 0,
+      subscribeId: json['subscribe_id'] ?? 0,
+      upload: json['upload'] ?? 0,
+      download: json['download'] ?? 0,
+      traffic: json['traffic'] ?? 0,
+      startTime: json['start_time'] ?? 0,
+      expireTime: json['expire_time'] ?? 0,
+      resetTime: json['reset_time'] ?? json['reset_cycle'] ?? 0,
+      token: json['token'] ?? '',
+    );
+  }
+
+  // 获取套餐名称
+  String get name => 'Premium';
+
+  // 计算已用流量百分比
+  double get usagePercentage {
+    if (traffic == 0) return 0;
+    final used = upload + download;
+    return (used / traffic * 100).clamp(0, 100);
+  }
+
+  // 格式化流量显示
+  String formatTraffic(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  // 计算下次重置天数
+  // 如果 API 返回了 reset_time 时间戳，直接使用
+  // 否则根据订阅周期推算（月付=30天，季付=90天等）
+  int? getResetDays() {
+    // 如果 API 提供了 reset_time 时间戳，使用它
+    if (resetTime > 0) {
+      try {
+        final resetDate = DateTime.fromMillisecondsSinceEpoch(resetTime * 1000);
+        final now = DateTime.now();
+        final diff = resetDate.difference(now).inDays;
+        return diff > 0 ? diff : 0;
+      } catch (e) {
+        print('[Subscription] Error using reset_time: $e');
+      }
+    }
+
+    // API 没有返回 reset_time，根据订阅周期推算
+    if (startTime == 0 || expireTime == 0) return null;
+
+    try {
+      final start = DateTime.fromMillisecondsSinceEpoch(startTime * 1000);
+      final expire = DateTime.fromMillisecondsSinceEpoch(expireTime * 1000);
+      final now = DateTime.now();
+
+      // 计算订阅周期（天数）
+      final cycleDays = expire.difference(start).inDays;
+
+      // 根据周期推断重置类型
+      if (cycleDays <= 31) {
+        // 月付：假设每月重置
+        final nextReset = DateTime(now.year, now.month + 1, start.day);
+        return nextReset.difference(now).inDays;
+      } else if (cycleDays <= 93) {
+        // 季付：假设3个月后重置
+        final nextReset = DateTime(now.year, now.month + 3, start.day);
+        return nextReset.difference(now).inDays;
+      } else if (cycleDays <= 186) {
+        // 半年付：假设6个月后重置
+        final nextReset = DateTime(now.year, now.month + 6, start.day);
+        return nextReset.difference(now).inDays;
+      } else {
+        // 年付：假设每年重置
+        final thisYearReset = DateTime(now.year, start.month, start.day);
+        final nextReset = now.isAfter(thisYearReset)
+            ? DateTime(now.year + 1, start.month, start.day)
+            : thisYearReset;
+        return nextReset.difference(now).inDays;
+      }
+    } catch (e) {
+      print('[Subscription] Error calculating reset days: $e');
+      return null;
+    }
+  }
+
+  // 计算到期天数
+  int getExpireDays() {
+    if (expireTime == 0) return 0;
+
+    try {
+      // 秒时间戳
+      final expireDate = DateTime.fromMillisecondsSinceEpoch(expireTime * 1000);
+      final today = DateTime.now();
+      final diff = expireDate.difference(DateTime(today.year, today.month, today.day));
+      return diff.inDays > 0 ? diff.inDays : 0;
+    } catch (e) {
+      print('[Subscription] Error calculating expire days: $e');
+      return 0;
+    }
+  }
+
+  // 获取重置周期类型
+  // 基于 resetTime (reset_cycle) 字段：
+  // 0: 不重置
+  // 1: 每月1日
+  // 2: 每月（基于开始日期）
+  // 3: 每年（基于开始日期）
+  String getResetCycle() {
+    switch (resetTime) {
+      case 0:
+        return '不重置';
+      case 1:
+        return '每月1日';
+      case 2:
+        return '每月';
+      case 3:
+        return '每年';
+      default:
+        return '不详';
+    }
+  }
+}

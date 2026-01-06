@@ -1,0 +1,215 @@
+FLCLASH 项目 - 关键文件路径清单
+================================
+
+## 所有与 API/网络相关的关键文件
+
+### 1. API 服务层 (SoraVPN 完整集成)
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/auth_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/subscribe_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/purchase_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/user_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/order_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/ticket_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/announcement_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/affiliate_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/config_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/vpn_service.dart
+
+### 2. 网络请求基础设施
+/Users/dylanhu/Desktop/lray/flclash/lib/common/request.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/common/remote_config_service.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/common/http.dart
+
+### 3. 应用配置 (API 基础 URL)
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/config/app_config.dart
+
+### 4. 数据模型 (SoraVPN 特定)
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/plan.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/order.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/payment_method.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/ticket.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/ticket_message.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/node_group.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/routing_group.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/models/proxy_mode.dart
+
+### 5. 核心数据模型
+/Users/dylanhu/Desktop/lray/flclash/lib/models/remote_config.dart
+
+### 6. 认证和状态管理
+/Users/dylanhu/Desktop/lray/flclash/lib/state.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/controller.dart
+
+### 7. UI 屏幕 (使用 API 服务)
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/auth_wrapper.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/auth_screen.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/dashboard_screen.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/plans_screen.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/purchasing_screen.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/order_payment_screen.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/settings_screen.dart
+
+### 8. 工单管理页面
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/ticket/ticket_list_page.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/ticket/ticket_detail_page.dart
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/screens/ticket/create_ticket_page.dart
+
+### 9. VPN 集成服务
+/Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/platform_proxy_helper.dart
+
+---
+
+## API 端点到文件的映射
+
+### 认证 API -> AuthService
+POST /v1/auth/login
+POST /v1/auth/register
+POST /v1/auth/reset
+POST /v1/common/send_code
+GET /v1/public/user/info
+POST /v1/auth/login/oauth
+POST /v1/auth/login/oauth/token
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/auth_service.dart
+
+### 订阅 API -> SubscribeService
+GET /api/subscribe?token=X&type=singbox
+GET /v1/public/subscribe/node/list
+GET /v1/public/user/subscribe
+POST /v1/public/user/unsubscribe/pre
+POST /v1/public/user/unsubscribe
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/subscribe_service.dart
+
+### 购买 API -> PurchaseService
+GET /v1/public/portal/subscribe
+GET /v1/public/portal/payment-method
+POST /v1/public/order/pre
+POST /v1/public/portal/pre
+POST /v1/public/order/purchase
+POST /v1/public/portal/purchase
+POST /v1/public/order/renewal
+GET /v1/public/order/detail
+GET /v1/public/portal/order/status
+POST /v1/public/portal/order/checkout
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/purchase_service.dart
+
+### 充值 API -> OrderService
+GET /v1/public/portal/payment-method?scene=recharge
+POST /v1/public/order/recharge
+GET /v1/public/order/detail
+POST /v1/public/portal/order/checkout
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/order_service.dart
+
+### 工单 API -> TicketService
+GET /v1/public/ticket/list
+GET /v1/public/ticket/detail?id=X
+POST /v1/public/ticket/
+POST /v1/public/ticket/follow
+PUT /v1/public/ticket/
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/ticket_service.dart
+
+### 用户 API -> UserService
+GET /v1/common/site/config
+GET /v1/public/user/oauth_methods
+POST /v1/public/user/bind_oauth
+POST /v1/public/user/unbind_oauth
+PUT /v1/user/password
+PUT /v1/user/bind/email
+PUT /v1/user/notify
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/user_service.dart
+
+### 邀请 API -> AffiliateService
+GET /v1/public/user/affiliate/count
+GET /v1/public/user/affiliate/list?page=1&size=50
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/affiliate_service.dart
+
+### 公告 API -> AnnouncementService
+GET /v1/public/announcement/list
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/announcement_service.dart
+
+### 配置 API -> ConfigService
+GET /v1/common/site/config
+文件: /Users/dylanhu/Desktop/lray/flclash/lib/soravpn_ui/services/config_service.dart
+
+---
+
+## 通用工具和辅助文件
+
+### 网络和 HTTP
+/Users/dylanhu/Desktop/lray/flclash/lib/common/request.dart                  (183 行, Dio 封装)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/http.dart                     (基础 HTTP)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/remote_config_service.dart   (远程配置)
+
+### 缓存和存储
+/Users/dylanhu/Desktop/lray/flclash/lib/common/cache.dart                   (本地缓存)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/preferences.dart              (共享偏好)
+
+### 系统和导航
+/Users/dylanhu/Desktop/lray/flclash/lib/common/system.dart                   (12KB, 系统工具)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/navigator.dart                (导航管理)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/navigation.dart               (导航工具)
+
+### 其他关键工具
+/Users/dylanhu/Desktop/lray/flclash/lib/common/constant.dart                 (常量)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/utils.dart                    (10KB, 通用工具)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/tray.dart                     (5KB, 托盘管理)
+/Users/dylanhu/Desktop/lray/flclash/lib/common/window.dart                   (窗口管理)
+
+---
+
+## 业务管理层
+
+/Users/dylanhu/Desktop/lray/flclash/lib/manager/app_manager.dart            (9KB, 应用管理)
+/Users/dylanhu/Desktop/lray/flclash/lib/manager/core_manager.dart           (Clash 核心)
+/Users/dylanhu/Desktop/lray/flclash/lib/manager/vpn_manager.dart            (VPN 管理)
+/Users/dylanhu/Desktop/lray/flclash/lib/manager/proxy_manager.dart          (代理管理)
+/Users/dylanhu/Desktop/lray/flclash/lib/manager/window_manager.dart         (7KB, 窗口)
+
+---
+
+## 关键常数和配置
+
+PLray API 基础 URL:
+  https://apiserver.taptaro.com
+  (在以下文件中定义或使用)
+  - app_config.dart
+  - 各个 Service 文件
+
+远程配置 URL:
+  https://wall-api.oss-cn-shenzhen.aliyuncs.com/config
+  (在 remote_config_service.dart 中定义)
+
+Token 存储键:
+  "auth_token" (SharedPreferences 中的键)
+
+用户数据存储键:
+  "user_data" (SharedPreferences 中的键)
+
+---
+
+## 订阅路径
+
+购买页面: /plans
+用户中心: /user-center
+邀请注册: /auth?invite=CODE
+
+网站基础 URL (开发):
+  http://localhost:3000
+
+---
+
+## 项目总体文件统计
+
+总 Dart 文件数: 244
+- SoraVPN UI 模块: 53 个文件
+  - 10 个服务
+  - 8 个模型
+  - 11 个屏幕
+  - 13 个组件
+  - 1 个入口
+
+- 通用层: 48 个工具文件
+
+- 管理层: 13 个管理器
+
+- 核心模型: 9 个文件
+

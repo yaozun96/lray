@@ -1,0 +1,26 @@
+{
+  "domain": ["https://api.cwtgo.com"],
+  "version": {
+    "windows": "0.8.91",
+    "macos": "0.8.91",
+    "android": "0.8.91",
+    "linux": "0.8.91"
+  },
+  "description": "1. 修复已知问题\n2. 优化连接速度\n3. 新增 Crisp 客服支持",
+  "download": {
+    "windows": "https://download.lray.io/Lray_client",
+    "macos": "https://download.lray.io/Lray_client",
+    "android": "https://download.lray.io/Lray_client",
+    "linux": "https://download.lray.io/Lray_client"
+  },
+  "telegram_url": "https://t.me/lray_io",
+  "official_url": "https://lray.dlgisea.com",
+  "crisp_id": "",
+  "plan_type_order": ["onetime", "cycle"],
+  "payment_rules": [
+    { "payment_id": 5, "max_amount": 20 },
+    { "payment_id": 2 },
+    { "payment_id": 6, "min_amount": 20 },
+    { "payment_id": 1, "min_amount": 20 }
+  ]
+}

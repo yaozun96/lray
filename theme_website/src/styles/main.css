@@ -1,0 +1,308 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    h1 {
+        @apply text-2xl;
+    }
+    h2 {
+        @apply text-xl;
+    }
+    h3 {
+        @apply text-lg;
+    }
+    * {
+        border-color: hsl(var(--border));
+    }
+    body {
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+    }
+}
+
+li {
+    list-style-type: none;
+}
+
+:root {
+    /* ===== unDraw 插图颜色 ===== */
+    --primary-svg-color: #4f46e5;
+
+    /* ===== Shadcn Vue 主题变量 ===== */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+}
+
+.dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+}
+
+#app {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.ViewWrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.LayoutWrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    overflow: hidden;
+    flex-direction: column;
+}
+
+.LayoutContainer {
+    width: 100%;
+    max-width: 1200px;
+
+    @media (max-width: 1200px) {
+        padding: 0 20px;
+    }
+}
+
+.StepTitle {
+    display: flex;
+    align-items: center;
+    font-size: 24px;
+    font-weight: 500;
+
+    &::before {
+        content: attr(data-step);
+        width: 48px;
+        height: 48px;
+        color: white;
+        background-color: hsl(var(--primary));
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border-radius: 50%;
+        margin-right: 16px;
+    }
+}
+
+/* Sign page styles */
+.SignWrapper {
+    flex: 1 1 auto;
+    height: calc(100vh - 80px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    @media (max-width: 768px) {
+        align-items: flex-start;
+    }
+}
+
+.SignContainer {
+    width: 100%;
+    padding: 32px;
+    max-width: 400px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 16px;
+    box-shadow: 0 12px 36px rgb(0 0 0 / 5%);
+
+    @media (max-width: 768px) {
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+    }
+}
+
+.SignForm {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 32px 0;
+}
+
+/* Vue Sonner Toast 样式 - Apple 风格 */
+[data-sonner-toaster] {
+    position: fixed !important;
+    top: 20px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 99999 !important;
+    --width: auto !important;
+}
+
+[data-sonner-toast] {
+    padding: 12px 16px !important;
+    border-radius: 14px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.08),
+        0 1px 4px rgba(0, 0, 0, 0.05),
+        inset 0 0 0 0.5px rgba(255, 255, 255, 0.5) !important;
+    color: #1d1d1f !important;
+    gap: 10px !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-left: 3px solid #34c759 !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-left: 3px solid #ff3b30 !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-left: 3px solid #ff9500 !important;
+}
+
+[data-sonner-toast][data-type="info"],
+[data-sonner-toast]:not([data-type]) {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-left: 3px solid #007aff !important;
+}
+
+[data-sonner-toast] [data-icon] {
+    flex-shrink: 0 !important;
+}
+
+[data-sonner-toast][data-type="success"] [data-icon] svg {
+    color: #34c759 !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] svg {
+    color: #ff3b30 !important;
+}
+
+[data-sonner-toast][data-type="warning"] [data-icon] svg {
+    color: #ff9500 !important;
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] svg,
+[data-sonner-toast]:not([data-type]) [data-icon] svg {
+    color: #007aff !important;
+}
+
+[data-sonner-toast] [data-content] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+}
+
+[data-sonner-toast] [data-title] {
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    color: #1d1d1f !important;
+}
+
+[data-sonner-toast] [data-description] {
+    font-weight: 400 !important;
+    font-size: 13px !important;
+    color: #86868b !important;
+}
+
+[data-sonner-toast] button[data-close-button] {
+    position: absolute !important;
+    right: 8px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 20px !important;
+    height: 20px !important;
+    border-radius: 50% !important;
+    background: rgba(0, 0, 0, 0.06) !important;
+    border: none !important;
+    color: #86868b !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+
+[data-sonner-toast] button[data-close-button]:hover {
+    background: rgba(0, 0, 0, 0.1) !important;
+    color: #1d1d1f !important;
+}
+
+[data-sonner-toast] button[data-close-button] svg {
+    width: 12px !important;
+    height: 12px !important;
+}
+
+/* 教程内容图片样式 - 全局 */
+.html-content {
+    display: block !important;
+    width: 100% !important;
+}
+
+.html-content img {
+    display: block !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    margin-top: 16px !important;
+    margin-bottom: 16px !important;
+    border-radius: 8px !important;
+}
+
+.html-content div[aria-label="img"] img,
+.html-content div[aria-label="img-scroll"] img,
+.html-content div[aria-label="img-pc"] img {
+    margin: 0 !important;
+}

@@ -1,0 +1,1067 @@
+import 'package:flutter/material.dart';
+import 'package:soravpn/theme/app_theme.dart';
+import 'package:soravpn/models/plan.dart';
+import 'package:soravpn/models/payment_method.dart';
+import 'package:soravpn/models/order.dart';
+import 'package:soravpn/services/purchase_service.dart';
+import 'package:soravpn/services/auth_service.dart';
+import 'package:soravpn/services/config_service.dart';
+import 'package:soravpn/screens/order_payment_screen.dart';
+
+/// 购买详情页面
+class PurchasingScreen extends StatefulWidget {
+  final Plan plan;
+  final int initialQuantity;
+
+  const PurchasingScreen({
+    super.key,
+    required this.plan,
+    this.initialQuantity = 1,
+  });
+
+  @override
+  State<PurchasingScreen> createState() => _PurchasingScreenState();
+}
+
+class _PurchasingScreenState extends State<PurchasingScreen> {
+  late int _quantity;
+  List<PaymentMethod> _paymentMethods = [];
+  List<PaymentMethod> _rawPaymentMethods = []; // 保存原始支付方式列表
+  PaymentMethod? _selectedPaymentMethod;
+  OrderPreview? _orderPreview;
+  bool _isLoadingPaymentMethods = true;
+  bool _isLoadingPreview = false;
+  bool _isPurchasing = false;
+  String? _error;
+
+  // 未登录用户的表单
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _couponController = TextEditingController();
+
+  // 优惠码输入框显示状态
+  bool _showCouponInput = false;
+  bool _isLoggedIn = false;
+
+  // 优惠码验证状态
+  String? _couponMessage;
+  bool _couponSuccess = false;
+
+  // 用户余额（元）
+  double _userBalance = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _quantity = widget.initialQuantity;
+    _initPage();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _couponController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initPage() async {
+    _isLoggedIn = await AuthService.isLoggedIn();
+    if (_isLoggedIn) {
+      final userData = await AuthService.getUserData();
+      if (userData != null && userData['email'] != null) {
+        _emailController.text = userData['email'];
+      }
+    }
+    await _loadPaymentMethods();
+  }
+
+  Future<void> _loadPaymentMethods() async {
+    setState(() {
+      _isLoadingPaymentMethods = true;
+      _error = null;
+    });
+
+    try {
+      final methods = await PurchaseService.getPaymentMethods();
+
+      // 获取用户余额（如果已登录）
+      if (_isLoggedIn) {
+        try {
+          // 从服务器获取最新用户信息（包括余额）
+          final userInfo = await AuthService.getUserInfo();
+          print('[PurchasingScreen] User info: $userInfo');
+
+          if (userInfo['balance'] != null) {
+            _userBalance = (userInfo['balance'] as num).toDouble() / 100; // 转换为元
+            print('[PurchasingScreen] User balance: $_userBalance yuan');
+          }
+        } catch (e) {
+          print('[PurchasingScreen] Failed to get user info: $e');
+          // 如果获取失败，继续处理但余额为0
+        }
+      }
+
+      setState(() {
+        _rawPaymentMethods = methods;
+        _isLoadingPaymentMethods = false;
+      });
+
+      // 根据当前订单金额更新支付方式状态
+      _updatePaymentMethodsWithBalance();
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoadingPaymentMethods = false;
+      });
+    }
+  }
+
+  /// 根据当前订单金额更新支付方式的余额状态
+  void _updatePaymentMethodsWithBalance({bool updatePreview = true}) {
+    if (_rawPaymentMethods.isEmpty) return;
+
+    // 获取当前订单总价
+    final orderAmount = _orderPreview?.totalAmountInYuan ?? widget.plan.calculatePriceInYuan(_quantity);
+    print('[PurchasingScreen] Order amount: $orderAmount yuan, User balance: $_userBalance yuan');
+
+    // 检查Balance支付方式是否余额不足
+    final processedMethods = _rawPaymentMethods.map((method) {
+      if (method.isBalance && _isLoggedIn) {
+        // 如果余额不足，禁用该支付方式
+        if (_userBalance < orderAmount) {
+          return PaymentMethod(
+            id: method.id,
+            name: method.name,
+            platform: method.platform,
+            icon: method.icon,
+            type: method.type,
+            disabled: true,
+            disabledReason: '余额不足（当前余额: ${ConfigService.currencySymbol}${_userBalance.toStringAsFixed(2)}）',
+          );
+        }
+      }
+      return method;
+    }).toList();
+
+    setState(() {
+      _paymentMethods = processedMethods;
+
+      // 如果当前选择的支付方式被禁用，则选择第一个可用的
+      if (_selectedPaymentMethod != null && _selectedPaymentMethod!.disabled) {
+        final firstAvailable = processedMethods.firstWhere(
+          (m) => !m.disabled,
+          orElse: () => processedMethods.first,
+        );
+        _selectedPaymentMethod = firstAvailable;
+      } else if (_selectedPaymentMethod == null && processedMethods.isNotEmpty) {
+        // 首次加载，选择第一个未禁用的支付方式
+        _selectedPaymentMethod = processedMethods.firstWhere(
+          (m) => !m.disabled,
+          orElse: () => processedMethods.first,
+        );
+      }
+    });
+
+    // 更新预览（如果需要）
+    if (updatePreview && _selectedPaymentMethod != null) {
+      _updatePreview();
+    }
+  }
+
+  Future<void> _updatePreview() async {
+    if (_selectedPaymentMethod == null) return;
+
+    setState(() {
+      _isLoadingPreview = true;
+      _couponMessage = null; // 清除之前的消息
+    });
+
+    try {
+      final preview = await PurchaseService.getOrderPreview(
+        subscribeId: widget.plan.id,
+        payment: _selectedPaymentMethod!.id,
+        quantity: _quantity,
+        coupon: _couponController.text.trim(),
+        identifier: _isLoggedIn ? null : _emailController.text.trim(),
+      );
+
+      setState(() {
+        _orderPreview = preview;
+        _isLoadingPreview = false;
+
+        // 如果有优惠码且验证成功，显示成功提示
+        if (_couponController.text.trim().isNotEmpty && preview.couponDiscountInYuan > 0) {
+          _couponMessage = '优惠码已应用，优惠 ${ConfigService.currencySymbol}${preview.couponDiscountInYuan.toStringAsFixed(2)}';
+          _couponSuccess = true;
+        } else if (_couponController.text.trim().isNotEmpty) {
+          // 有优惠码但没有优惠（可能是不适用）
+          _couponMessage = null;
+          _couponSuccess = false;
+        }
+      });
+
+      // 订单预览更新后，重新检查余额状态（因为总价可能因优惠码等因素改变）
+      // updatePreview=false 避免循环调用
+      _updatePaymentMethodsWithBalance(updatePreview: false);
+    } catch (e) {
+      setState(() {
+        _isLoadingPreview = false;
+
+        // 显示错误提示
+        if (_couponController.text.trim().isNotEmpty) {
+          _couponMessage = '优惠码无效或已过期';
+          _couponSuccess = false;
+        }
+      });
+
+      print('[PurchasingScreen] Preview error: $e');
+    }
+  }
+
+  Future<void> _handlePurchase() async {
+    if (_selectedPaymentMethod == null) {
+      _showError('请选择支付方式');
+      return;
+    }
+
+    if (!_isLoggedIn && _emailController.text.trim().isEmpty) {
+      _showError('请输入邮箱地址');
+      return;
+    }
+
+    setState(() {
+      _isPurchasing = true;
+      _error = null;
+    });
+
+    try {
+      print('[PurchasingScreen] Starting purchase - payment_id: ${_selectedPaymentMethod!.id}, isBalance: ${_selectedPaymentMethod!.isBalance}');
+
+      final order = await PurchaseService.purchase(
+        subscribeId: widget.plan.id,
+        payment: _selectedPaymentMethod!.id,
+        quantity: _quantity,
+        coupon: _couponController.text.trim(),
+        identifier: _isLoggedIn ? null : _emailController.text.trim(),
+        password: _isLoggedIn ? null : _passwordController.text,
+      );
+
+      print('[PurchasingScreen] Purchase completed - Order: ${order.toJson()}');
+      print('[PurchasingScreen] Order status: ${order.status}, orderNo: ${order.orderNo}');
+
+      setState(() {
+        _isPurchasing = false;
+      });
+
+      // 跳转到订单支付页面
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => OrderPaymentScreen(
+              order: order,
+              paymentMethod: _selectedPaymentMethod!,
+              identifier: _isLoggedIn ? null : _emailController.text.trim(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isPurchasing = false;
+        _error = e.toString();
+      });
+      _showError(e.toString());
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.error,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bgDark,
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // 标题栏
+            _buildTitleBar(),
+
+            // 主内容区域
+            Expanded(
+              child: _buildContent(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 标题栏
+  Widget _buildTitleBar() {
+    return Material(
+      elevation: 2,
+      color: AppTheme.bgCard,
+      child: Container(
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: AppTheme.border, width: 1),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Spacer(),
+            // 返回按钮（右侧）
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                print('[PurchasingScreen] Back button tapped');
+                Navigator.of(context).maybePop();
+              },
+              child: Container(
+                width: 44,
+                height: 44,
+                color: Colors.red.withOpacity(0.3), // 临时调试颜色
+                alignment: Alignment.center,
+                child: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary, size: 24),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 主内容区域
+  Widget _buildContent() {
+    if (_isLoadingPaymentMethods) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryPurple),
+        ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 左侧：表单区域
+        Expanded(
+          flex: 3,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 账户信息（仅未登录用户）
+                if (!_isLoggedIn) ...[
+                  _buildAccountSection(),
+                  const SizedBox(height: 12),
+                ],
+
+                // 购买时长选择
+                _buildDurationSelector(),
+                const SizedBox(height: 12),
+
+                // 优惠码
+                _buildCouponSection(),
+                const SizedBox(height: 12),
+
+                // 支付方式选择
+                _buildPaymentMethodSection(),
+              ],
+            ),
+          ),
+        ),
+
+        // 右侧：价格预览
+        Container(
+          width: 360,
+          decoration: const BoxDecoration(
+            color: AppTheme.bgCard,
+            border: Border(
+              left: BorderSide(color: AppTheme.border, width: 1),
+            ),
+          ),
+          child: _buildPricePreview(),
+        ),
+      ],
+    );
+  }
+
+  /// 购买时长选择
+  Widget _buildDurationSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '购买时长',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [1, 3, 12].map((months) {
+            final isSelected = _quantity == months;
+            final price = widget.plan.calculatePriceInYuan(months);
+            final discountPercent = widget.plan.calculateDiscountPercent(months);
+
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  _quantity = months;
+                });
+                // 重新检查余额状态
+                _updatePaymentMethodsWithBalance();
+                // 注意：_updatePaymentMethodsWithBalance() 会自动调用 _updatePreview()
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                width: 160,
+                decoration: BoxDecoration(
+                  color: isSelected ? AppTheme.primaryPurple.withValues(alpha: 0.12) : AppTheme.bgCard,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? AppTheme.primaryPurple : AppTheme.border.withValues(alpha: 0.3),
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          months == 1 ? '1 个月' : months == 3 ? '3 个月' : '12 个月',
+                          style: TextStyle(
+                            color: isSelected ? AppTheme.primaryPurple : AppTheme.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (discountPercent != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.success.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '-$discountPercent%',
+                              style: const TextStyle(
+                                color: AppTheme.success,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${ConfigService.currencySymbol}${price.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: isSelected ? AppTheme.primaryPurple : AppTheme.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// 账户信息部分
+  Widget _buildAccountSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '账户信息',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _emailController,
+          decoration: const InputDecoration(
+            labelText: '邮箱地址',
+            hintText: '请输入邮箱地址',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _passwordController,
+          decoration: const InputDecoration(
+            labelText: '密码（可选）',
+            hintText: '留空则系统自动生成密码',
+            border: OutlineInputBorder(),
+          ),
+          obscureText: true,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '提示：首次购买会自动创建账户',
+          style: TextStyle(
+            color: AppTheme.textTertiary,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 支付方式选择
+  Widget _buildPaymentMethodSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '支付方式',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...(_paymentMethods.map((method) {
+          final isSelected = _selectedPaymentMethod?.id == method.id;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: method.disabled
+                  ? null
+                  : () {
+                      setState(() {
+                        _selectedPaymentMethod = method;
+                      });
+                      _updatePreview();
+                    },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: method.disabled
+                      ? AppTheme.bgCard.withValues(alpha: 0.5)
+                      : (isSelected ? AppTheme.primaryPurple.withValues(alpha: 0.12) : AppTheme.bgCard),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? AppTheme.primaryPurple : AppTheme.border.withValues(alpha: 0.3),
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // 支付方式图标：优先使用网络图标，否则使用默认图标
+                    if (method.icon != null && method.icon!.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.network(
+                          method.icon!,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            // 加载失败时显示默认图标
+                            return Icon(
+                              method.isBalance
+                                  ? Icons.account_balance_wallet_rounded
+                                  : Icons.payment_rounded,
+                              color: method.disabled
+                                  ? AppTheme.textTertiary
+                                  : (isSelected ? AppTheme.primaryPurple : AppTheme.textSecondary),
+                              size: 24,
+                            );
+                          },
+                        ),
+                      )
+                    else
+                      Icon(
+                        method.isBalance
+                            ? Icons.account_balance_wallet_rounded
+                            : Icons.payment_rounded,
+                        color: method.disabled
+                            ? AppTheme.textTertiary
+                            : (isSelected ? AppTheme.primaryPurple : AppTheme.textSecondary),
+                        size: 24,
+                      ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            method.name,
+                            style: TextStyle(
+                              color: method.disabled
+                                  ? AppTheme.textTertiary
+                                  : (isSelected ? AppTheme.primaryPurple : AppTheme.textPrimary),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (method.disabled && method.disabledReason != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              method.disabledReason!,
+                              style: const TextStyle(
+                                color: AppTheme.error,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppTheme.primaryPurple,
+                        size: 20,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        })),
+      ],
+    );
+  }
+
+  /// 优惠码部分
+  Widget _buildCouponSection() {
+    if (!_showCouponInput) {
+      // 折叠状态：显示"有优惠码？"按钮
+      return TextButton.icon(
+        onPressed: () {
+          setState(() {
+            _showCouponInput = true;
+          });
+        },
+        icon: const Icon(
+          Icons.confirmation_number_outlined,
+          size: 18,
+          color: AppTheme.primaryPurple,
+        ),
+        label: const Text(
+          '有优惠码？',
+          style: TextStyle(
+            color: AppTheme.primaryPurple,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+
+    // 展开状态：显示完整的优惠码输入框
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              '优惠码（可选）',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            // 收起按钮
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _showCouponInput = false;
+                  _couponMessage = null;
+                });
+              },
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                '收起',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _couponController,
+                decoration: const InputDecoration(
+                  hintText: '请输入优惠码',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  // 清除验证消息当用户修改优惠码时
+                  if (_couponMessage != null) {
+                    setState(() {
+                      _couponMessage = null;
+                    });
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: _isLoadingPreview ? null : _updatePreview,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+              child: const Text('应用'),
+            ),
+          ],
+        ),
+        // 验证消息
+        if (_couponMessage != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _couponSuccess
+                  ? AppTheme.success.withValues(alpha: 0.1)
+                  : AppTheme.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: _couponSuccess
+                    ? AppTheme.success.withValues(alpha: 0.3)
+                    : AppTheme.error.withValues(alpha: 0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _couponSuccess ? Icons.check_circle_rounded : Icons.error_rounded,
+                  size: 16,
+                  color: _couponSuccess ? AppTheme.success : AppTheme.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _couponMessage!,
+                    style: TextStyle(
+                      color: _couponSuccess ? AppTheme.success : AppTheme.error,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 价格预览
+  Widget _buildPricePreview() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 商品详情
+          const Text(
+            '商品详情',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.bgDark,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.border.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 套餐名称和数量
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.plan.name,
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'x $_quantity ${_quantity == 1 ? '月' : _quantity == 3 ? '季' : '年'}',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: AppTheme.border, height: 1),
+                const SizedBox(height: 12),
+
+                // 套餐信息
+                _buildPlanDetailItem(Icons.cloud_download_rounded, '每月流量', widget.plan.formatTraffic()),
+                const SizedBox(height: 10),
+                _buildPlanDetailItem(Icons.speed_rounded, '连接速度', widget.plan.formatSpeedLimit()),
+                const SizedBox(height: 10),
+                _buildPlanDetailItem(Icons.devices_rounded, '同时连接', widget.plan.formatDeviceLimit()),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // 商品账单
+          const Text(
+            '商品账单',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 价格明细
+          if (_orderPreview != null) ...[
+            _buildPriceItem('价格', _orderPreview!.priceInYuan),
+            _buildPriceItem('商品折扣', -_orderPreview!.productDiscountInYuan, isDiscount: true),
+            _buildPriceItem('折扣码优惠', -_orderPreview!.couponDiscountInYuan, isDiscount: true),
+            _buildPriceItem('手续费', _orderPreview!.feeAmountInYuan),
+            _buildPriceItem('赠金抵扣', -_orderPreview!.giftAmountInYuan, isDiscount: true),
+            const SizedBox(height: 12),
+            const Divider(color: AppTheme.border),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '总价',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '${ConfigService.currencySymbol}${_orderPreview!.totalAmountInYuan.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: AppTheme.primaryPurple,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '（* 价格以 ${ConfigService.currencyUnit} 计价，包含消费税）',
+              style: const TextStyle(
+                color: AppTheme.textTertiary,
+                fontSize: 11,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ] else if (_isLoadingPreview) ...[
+            const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryPurple),
+              ),
+            ),
+          ] else ...[
+            // 使用计算的价格
+            Builder(
+              builder: (context) {
+                final price = widget.plan.calculatePriceInYuan(_quantity);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '总计',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '${ConfigService.currencySymbol}${price.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: AppTheme.primaryPurple,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '（* 价格以 ${ConfigService.currencyUnit} 计价，包含消费税）',
+                      style: const TextStyle(
+                        color: AppTheme.textTertiary,
+                        fontSize: 11,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          // 购买按钮
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isPurchasing ? null : _handlePurchase,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                elevation: 0,
+              ),
+              child: _isPurchasing
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text(
+                      '立即购买',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 价格项
+  Widget _buildPriceItem(String label, double amount, {bool isDiscount = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            '${amount >= 0 ? '+' : ''}${ConfigService.currencySymbol}${amount.abs().toStringAsFixed(2)}',
+            style: TextStyle(
+              color: isDiscount ? AppTheme.success : AppTheme.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 套餐详情项
+  Widget _buildPlanDetailItem(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: AppTheme.primaryPurple.withValues(alpha: 0.8),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}

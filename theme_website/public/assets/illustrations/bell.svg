@@ -1,0 +1,35 @@
+<?xml version="1.0" standalone="no"?>
+<svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+  <defs>
+    <style>
+      @keyframes swing {
+        0%, 100% { transform: rotate(0deg); }
+        15% { transform: rotate(12deg); }
+        30% { transform: rotate(-10deg); }
+        45% { transform: rotate(8deg); }
+        60% { transform: rotate(-6deg); }
+        75% { transform: rotate(4deg); }
+        90% { transform: rotate(-2deg); }
+      }
+      .bell-body {
+        transform-origin: 512px 187px;
+        animation: swing 2s ease-in-out infinite;
+      }
+    </style>
+  </defs>
+
+  <!-- 铃铛主体 - 添加摇摆动画 -->
+  <g class="bell-body">
+    <!-- 黄色圆形装饰 -->
+    <path d="M512 669.866667m-234.666667 0a234.666667 234.666667 0 1 0 469.333334 0 234.666667 234.666667 0 1 0-469.333334 0Z" fill="#FCCA1E"></path>
+
+    <!-- 红色顶部手柄 -->
+    <path d="M512 332.8c-36.266667 0-64-27.733333-64-64v-85.333333c0-36.266667 27.733333-64 64-64s64 27.733333 64 64v85.333333c0 34.133333-27.733333 64-64 64z" fill="#FF354A"></path>
+
+    <!-- 蓝色铃铛主体 -->
+    <path d="M755.2 768H268.8c-42.666667 0-76.8-34.133333-76.8-76.8v-183.466667c0-177.066667 142.933333-320 320-320s320 142.933333 320 320v183.466667c0 42.666667-34.133333 76.8-76.8 76.8z" fill="#2953FF"></path>
+
+    <!-- 浅蓝色底部横条 -->
+    <path d="M832 768H192c-36.266667 0-64-27.733333-64-64s27.733333-64 64-64h640c36.266667 0 64 27.733333 64 64s-27.733333 64-64 64z" fill="#93A8FF"></path>
+  </g>
+</svg>
